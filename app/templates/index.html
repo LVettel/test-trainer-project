@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>{{title}}</title>
+	<meta name="viewport" content="width=device-width">
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<style type="text/css">
+		.ansvers div{
+			padding: 2px;
+			margin: 2px 0 0 0;	
+		}
+		
+		.correct{
+			background: #a3f3a3;
+			border-radius: 7px;
+		}
+		
+		.incorrect{
+			background: #f7acac;
+			border-radius: 7px;
+		}
+		
+		.header{
+			position: fixed;  
+			top: 0;  
+			z-index: 100;  
+			width: 1000px;	
+			min-width: 400px;	
+			background: #fff;			
+		}
+		
+		#test-container{
+			overflow: auto;
+			margin-top: 60px;
+		}
+		
+		.container{
+			width: 1000px;
+			margin: 0 auto;
+			font-family:'YS Text','Helvetica Neue',Arial,sans-serif;
+		}
+
+		.question img{
+			max-width: 980px;
+		}
+		
+		.question-text{
+			font-weight: bolder;
+		}
+
+		.question{
+			background: #f5fcff;
+			margin: 12px 5px 5px 0;
+			padding: 5px;
+			border-radius: 7px;
+			border-style: solid;
+			border-color: #d0e6fb;
+			border-width: 2pt;
+		}
+
+		.ansvers{
+			margin: 2px;
+		}
+		
+		.result-container span,input {
+			margin: 4px;			
+			padding: 2px 4px 2px 4px;
+		}
+		
+		#chapters{
+			width: 150px;
+		}
+		
+		#questions-count{
+			width: 40px;
+		}
+
+		label{
+			display:inline;		
+		}
+		
+		@media (max-width: 1000px) {
+			.container{
+				width: 800px;
+			}	
+			.question img{
+				max-width: 780px;
+			}
+			.header{
+				width: 800px;	
+			}
+		}
+
+		@media (max-width: 800px) {
+			.container{
+				width: 600px;
+			}		
+			.question img{
+				max-width: 580px;
+			}	
+			.header{
+				width: 600px;	
+			}
+		}
+
+		@media (max-width: 600px) {
+			.container{
+				width: 400px;
+				font-size: large;
+			}		
+			.question img{
+				max-width: 380px;
+			}	
+			.header{
+				width: 400px;	
+			}
+			#test-container{
+				overflow: auto;
+				margin-top: 80px;
+			}			
+		}
+		
+	</style>
+	<script id="data" type="application/javascript" src="app/{{name}}.js"></script>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+	<script type="application/javascript">
+	
+		var testsWithErrors = [];
+	
+		$(function() {
+			$('#chapters').append( '<option value="all">Все</option>' );
+			for (var chapterIndex in testData.chapters){
+				var chapter = testData.chapters[chapterIndex];
+				$('#chapters').append( '<option value="' + chapter.id + '">' + chapter.id + ". " + chapter.name + '</option>' );
+			}
+			$('#chapters').append( '<option value="work-on-bags">Глобальная работа над ошибками</option>' );
+			$('#chapters').append( '<option value="work-on-bags-all">Все ошибки</option>' );
+			$('#chapters').append( '<option value="test-imitation">Имитация теста</option>' );
+		});
+		
+		async function getAllQuestions(mode = null){
+			var allQuestions = [];
+			
+			var chapterName = mode;
+			if (chapterName == null){
+				var chapterName = $("#chapters").val();
+			}
+			
+			if (chapterName == "work-on-bags"){
+				var workOnBagsQuestions = await $.ajax({url: "/api?name={{name}}"});
+			}else if(chapterName == "work-on-bags-all"){
+				var workOnBagsQuestions = await $.ajax({url: "/api/all?name={{name}}"});
+			}
+						
+			for (var chapterIndex in testData.chapters){
+				var chapter = testData.chapters[chapterIndex];
+				if (chapterName == "work-on-bags" || chapterName == "work-on-bags-all"){
+					for (var questionIndex in chapter.questions){
+						var question = chapter.questions[questionIndex];
+						if (workOnBagsQuestions.indexOf(question.id) >= 0){
+							allQuestions.push(question);
+						}
+					}
+				}else if(chapterName == "all" || chapterName == chapter.id){
+					allQuestions = allQuestions.concat(chapter.questions);
+				}else if(chapterName == "test-imitation"){
+					allQuestions.push(chapter.questions[Math.floor(Math.random() * chapter.questions.length)]);
+				}
+			}
+			
+			return allQuestions;
+		}
+		
+		async function getTestQuestions(){
+			var allQuestions = await getAllQuestions();
+			
+			var result = [];
+			var questionCount = $("#questions-count").val();
+			var randomOrder = $("#rnd-order").prop('checked');
+			
+			if (questionCount == "" || questionCount == 0){
+				questionCount = allQuestions.length;	
+			}
+			
+			for (var i=0; i<questionCount; i++){
+				if (randomOrder){
+					result[i] = allQuestions.splice(Math.floor(Math.random() * allQuestions.length), 1)[0];
+				}else{
+					result[i] = allQuestions[i];
+				}
+			}			
+			
+			return result;
+		}
+		
+		async function start(questionsList){
+			$("#test-container").empty();
+			testsWithErrors = [];
+			$("#correct-answers").text("0");
+			$("#incorrect-answers").text("0");
+			
+			// Используем или вопросы которые переданы как параметр или вычисляем исходя из данных в форме параметров
+			if (typeof(questionsList) == "undefined"){
+				var questions = await getTestQuestions();
+			}else{
+				var questions = questionsList;
+			}
+			
+			$("#all-questions").text(questions.length);			
+			
+			for (var questionIndex in questions){
+				var question = questions[questionIndex];
+				var questionDiv = $("<div class='question' id='" + question.id + "'/>");				
+				questionDiv.appendTo("#test-container")
+				
+				var questionTextDiv = $("<div class='question-text'>" + question.question + "</div>");				
+				questionTextDiv.appendTo(questionDiv)
+				
+				if (question.image != null){
+					var questionImg = $("<img src='app/{{name}}/" + question.image + "'>");				
+					questionImg.appendTo(questionDiv)
+				}
+				
+				var line = $("<hr/>");
+				line.appendTo(questionDiv)
+
+				var answersContainerDiv = $("<div class='ansvers'/>");				
+				answersContainerDiv.appendTo(questionDiv)
+				
+				for (var answerIndex in question.answers){
+					var answer = question.answers[answerIndex];
+					var answerId = question.id + "." + answer.id;
+					var answerRadio = $("<div><input id='" + answerId + "' name='" + question.id + 
+						"' type='radio' correct='" + answer.correct + "' onchange='checkAnswer(this)'/><label for='" + 
+						answerId + "'>" + answer.id + " " + answer.answer + "</label></div>");				
+					answerRadio.appendTo(answersContainerDiv)						
+				}					
+			}			
+			$(window).scrollTop(0);
+		}
+		
+		function checkAnswer(radio){
+			if (radio.checked){				
+				var correct = radio.getAttribute("correct");
+				var testId = radio.closest("div.question").id;
+				if (correct == "true"){
+					radio.closest("div").className = "correct";
+					$("#correct-answers").text(parseInt($("#correct-answers").text()) + 1);
+				}else{
+					radio.closest("div").className = "incorrect";
+					$("#incorrect-answers").text(parseInt($("#incorrect-answers").text()) + 1);
+					testsWithErrors.push(testId);
+				}
+				
+				$.ajax({
+					url: "/api",	
+					method: "POST",
+					data: '{"question": "' + testId + '", "result": '+ correct + ', "test": "{{name}}"}',
+					contentType: "application/json"					
+				}).fail(function(jqXHR, textStatus, errorThrown) {
+						alert("Request error: " +  textStatus);
+				});				
+			}else{
+				radio.setClass("");
+			}
+		}
+		
+		async function startWorkingOnBugs(){
+			var allQuestions = await getAllQuestions("all");
+			var result = [];
+			for (var questionIndex in allQuestions){
+				var question = allQuestions[questionIndex];			
+				if (testsWithErrors.indexOf(question.id) >= 0){
+					result.push(question);
+				}
+			}
+
+			start(result);
+		}
+	</script>
+</head>
+<body>
+	<div class="container">
+		<div class="header">
+			<div>
+				<label>Тема<select id="chapters"></select></label>
+				<label>Кол-во вопросов<input type="number" id="questions-count"/></label>
+				<label>Перемешать<input type="checkbox" id="rnd-order"/></label>
+				<input type="button" onclick="start()" value="Начать"/>
+			</div>
+			<div class="result-container">
+				<span>Всего: <span id="all-questions">0</span></span><span class="correct">Правильно: <span id="correct-answers">0</span></span><span class="incorrect">Ошибок: <span id="incorrect-answers">0</span></span>
+				<input type="button" onclick="startWorkingOnBugs()" value="Работа над ошибками"/>
+			</div>
+		</div>
+		<div id="test-container"/>
+	</div>
+</body>
+</html>
